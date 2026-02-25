@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "947095434440",
+    "project_id": "xamxam-livraison",
+    "storage_bucket": "xamxam-livraison.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:947095434440:android:8858565065a47d497121fd",
+        "android_client_info": {
+          "package_name": "com.xoolibeut.client"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDR8nSdCOdqFQ9vKUV3tYnZ4816nS_Wnk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:947095434440:android:a0a44d161089c50f7121fd",
+        "android_client_info": {
+          "package_name": "com.xoolibeut.livreur"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDR8nSdCOdqFQ9vKUV3tYnZ4816nS_Wnk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

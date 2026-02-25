@@ -1,0 +1,91 @@
+############################################################
+# GLOBAL
+############################################################
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+############################################################
+# FLUTTER
+############################################################
+
+# Dart / Flutter
+.dart_tool/
+.packages
+.pub/
+build/
+#mp4
+*.mp4
+# Generated plugin files (desktop)
+**/linux/flutter/generated_plugin_registrant.*
+**/linux/flutter/generated_plugins.cmake
+**/macos/Flutter/GeneratedPluginRegistrant.*
+**/windows/flutter/generated_plugin_registrant.*
+**/windows/flutter/generated_plugins.cmake
+
+# Android
+**/android/.gradle/
+**/android/app/build/
+**/android/local.properties
+**/android/key.properties
+
+# iOS
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+
+############################################################
+# ANGULAR
+############################################################
+
+**/node_modules/
+**/dist/
+**/.angular/
+**/.cache/
+
+############################################################
+# SPRING BOOT / JAVA
+############################################################
+
+# Maven / Gradle
+**/target/
+**/build/
+
+# IDE files
+**/.classpath
+**/.project
+**/.settings/
+
+############################################################
+# IDE (GENERAL)
+############################################################
+
+# VSCode
+.vscode/
+
+# IntelliJ
+.idea/
+*.iml
+
+############################################################
+# FIREBASE
+############################################################
+
+.firebase/
+firestore-debug.log
+ui-debug.log
+
+############################################################
+# ENV FILES (si tu en ajoutes plus tard)
+############################################################
+
+.env
+.env.local
