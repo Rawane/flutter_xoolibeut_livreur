@@ -4,9 +4,20 @@ import '../models/livraison.dart';
 import '../config/api_config.dart';
 import 'package:xoolibeut_livreur/utils/device_utils.dart';
 
+/// Exception spécifique pour un livreur suspendu temporairement
+class LivreurSuspenduException implements Exception {
+  final String message;
+  LivreurSuspenduException([
+    this.message = "Votre compte est suspendu temporairement.",
+  ]);
+  @override
+  String toString() => message;
+}
+
 class LivraisonService {
   final String baseUrl = ApiConfig.baseUrl;
   LivraisonService();
+
   Future<List<LivraisonLivreur>> getDemandesLivraisonPage(
     String numeroLivreur,
     String token, {
@@ -16,12 +27,16 @@ class LivraisonService {
     final uri = Uri.parse(
       '$baseUrl/demandes/$numeroLivreur?page=$page&size=$size',
     );
-
-    final response = await http.get(uri, headers: await getAuthHeaders());
+    final response = await http.get(
+      uri,
+      headers: await authHeadersValid(numeroLivreur),
+    );
 
     if (response.statusCode == 200) {
       final jsonList = json.decode(response.body)['content'] as List;
       return jsonList.map((e) => LivraisonLivreur.fromJson(e)).toList();
+    } else if (response.statusCode == 403) {
+      throw LivreurSuspenduException();
     } else {
       throw Exception('Erreur récupération livraisons : ${response.body}');
     }
@@ -36,12 +51,16 @@ class LivraisonService {
     final uri = Uri.parse(
       '$baseUrl/acceptes_pris/$numeroLivreur?page=$page&size=$size',
     );
-
-    final response = await http.get(uri, headers: await getAuthHeaders());
+    final response = await http.get(
+      uri,
+      headers: await authHeadersValid(numeroLivreur),
+    );
 
     if (response.statusCode == 200) {
       final jsonList = json.decode(response.body)['content'] as List;
       return jsonList.map((e) => LivraisonLivreur.fromJson(e)).toList();
+    } else if (response.statusCode == 403) {
+      throw LivreurSuspenduException();
     } else {
       throw Exception('Erreur récupération livraisons : ${response.body}');
     }
@@ -56,12 +75,16 @@ class LivraisonService {
     final uri = Uri.parse(
       '$baseUrl/livres/$numeroLivreur?page=$page&size=$size',
     );
-
-    final response = await http.get(uri, headers: await getAuthHeaders());
+    final response = await http.get(
+      uri,
+      headers: await authHeadersValid(numeroLivreur),
+    );
 
     if (response.statusCode == 200) {
       final jsonList = json.decode(response.body)['content'] as List;
       return jsonList.map((e) => LivraisonLivreur.fromJson(e)).toList();
+    } else if (response.statusCode == 403) {
+      throw LivreurSuspenduException();
     } else {
       throw Exception('Erreur récupération livraisons : ${response.body}');
     }
@@ -75,14 +98,17 @@ class LivraisonService {
     final url = Uri.parse(
       '$baseUrl/livraison/$numeroLivreur/accepter/$numeroLivraison',
     );
-    final response = await http.put(url, headers: await getAuthHeaders());
+    final response = await http.put(
+      url,
+      headers: await authHeadersValid(numeroLivreur),
+    );
+
     if (response.statusCode == 200) {
       final body = jsonDecode(response.body);
-      return LivraisonLivreur.fromJson(
-        body,
-      ); //récupère le numéro de livraison numero
+      return LivraisonLivreur.fromJson(body);
+    } else if (response.statusCode == 403) {
+      throw LivreurSuspenduException();
     } else if (response.statusCode == 409) {
-      // 409 = Conflict (idéal pour "déjà acceptée")
       throw Exception("DEJA_ACCEPTEE");
     } else {
       throw Exception("ERREUR_GENERALE");
@@ -97,14 +123,17 @@ class LivraisonService {
     final url = Uri.parse(
       '$baseUrl/livraison/$numeroLivreur/annuler/$numeroLivraison',
     );
-    final response = await http.put(url, headers: await getAuthHeaders());
+    final response = await http.put(
+      url,
+      headers: await authHeadersValid(numeroLivreur),
+    );
+
     if (response.statusCode == 200) {
       final body = jsonDecode(response.body);
-      return LivraisonLivreur.fromJson(
-        body,
-      ); //récupère le numéro de livraison numero
+      return LivraisonLivreur.fromJson(body);
+    } else if (response.statusCode == 403) {
+      throw LivreurSuspenduException();
     } else if (response.statusCode == 409) {
-      // 409 = Conflict (idéal pour "déjà acceptée")
       throw Exception("DEJA_ACCEPTEE");
     } else {
       throw Exception("ERREUR_GENERALE");
@@ -113,14 +142,18 @@ class LivraisonService {
 
   Future<LivreurDashboard> dashbordLivreur(String numeroLivreur) async {
     final url = Uri.parse('$baseUrl/$numeroLivreur/dashboard');
-    final response = await http.get(url, headers: await getAuthHeaders());
+    final response = await http.get(
+      url,
+      headers: await authHeadersValid(numeroLivreur),
+    );
+
     if (response.statusCode == 200) {
       final body = jsonDecode(response.body);
-      return LivreurDashboard.fromJson(
-        body,
-      ); //récupère le numéro de livraison numero
+      return LivreurDashboard.fromJson(body);
+    } else if (response.statusCode == 403) {
+      throw LivreurSuspenduException();
     } else {
-      throw Exception("Impossible d'accepter la livraison");
+      throw Exception("Impossible d'obtenir le dashboard");
     }
   }
 
@@ -133,14 +166,18 @@ class LivraisonService {
     final url = Uri.parse(
       '$baseUrl/livraison/$numeroLivreur/changestatus/$numeroLivraison/$status',
     );
-    final response = await http.put(url, headers: await getAuthHeaders());
+    final response = await http.put(
+      url,
+      headers: await authHeadersValid(numeroLivreur),
+    );
+
     if (response.statusCode == 200) {
       final body = jsonDecode(response.body);
-      return LivraisonLivreur.fromJson(
-        body,
-      ); //récupère le numéro de livraison numero
+      return LivraisonLivreur.fromJson(body);
+    } else if (response.statusCode == 403) {
+      throw LivreurSuspenduException();
     } else {
-      throw Exception("Impossible d’annuler la livraison");
+      throw Exception("Impossible de changer le statut de la livraison");
     }
   }
 
@@ -152,12 +189,17 @@ class LivraisonService {
     final url = Uri.parse(
       '$baseUrl/livraison/$numeroLivreur/enroute/$numeroLivraison',
     );
-    final response = await http.post(url, headers: await getAuthHeaders());
-    if (response.statusCode == 200) {
-      //récupère le numéro de livraison numero
-    } else {
-      throw Exception("Impossible d' envoyer la notification ");
-    }
+    final response = await http.post(
+      url,
+      headers: await authHeadersValid(numeroLivreur),
+    );
+
+    if (response.statusCode == 200)
+      return;
+    else if (response.statusCode == 403)
+      throw LivreurSuspenduException();
+    else
+      throw Exception("Impossible d'envoyer la notification");
   }
 
   Future<void> terminerLivraison(
@@ -167,12 +209,17 @@ class LivraisonService {
     final url = Uri.parse(
       '$baseUrl/livraison/$numeroLivreur/terminer/$numeroLivraison',
     );
+    final response = await http.put(
+      url,
+      headers: await authHeadersValid(numeroLivreur),
+    );
 
-    final response = await http.put(url, headers: await getAuthHeaders());
-
-    if (response.statusCode != 200) {
+    if (response.statusCode == 200)
+      return;
+    else if (response.statusCode == 403)
+      throw LivreurSuspenduException();
+    else
       throw Exception("Impossible de terminer la livraison : ${response.body}");
-    }
   }
 
   Future<void> envoyerInformation(
@@ -183,15 +230,17 @@ class LivraisonService {
     final url = Uri.parse(
       '$baseUrl/livraison/$numeroLivreur/info/$numeroLivraison',
     );
-
     final response = await http.post(
       url,
-      headers: await getAuthHeaders(),
+      headers: await authHeadersValid(numeroLivreur),
       body: jsonEncode({"message": message}),
     );
 
-    if (response.statusCode != 200) {
+    if (response.statusCode == 200)
+      return;
+    else if (response.statusCode == 403)
+      throw LivreurSuspenduException();
+    else
       throw Exception("Impossible d'envoyer l'information");
-    }
   }
 }

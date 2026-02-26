@@ -55,7 +55,7 @@ Future<bool> onStart(ServiceInstance service) async {
       final numeroLivreur = prefs.getString('numeroLivreur') ?? 'unknown';
 
       await http.post(
-        Uri.parse('$baseUrl/position/$numeroLivreur'),
+        Uri.parse('$baseUrl/v2/position/$numeroLivreur'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'latitude': position.latitude,

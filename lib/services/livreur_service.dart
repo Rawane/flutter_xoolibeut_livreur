@@ -3,12 +3,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import 'package:xoolibeut_livreur/utils/device_utils.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class LivreurService {
   final String baseUrl = ApiConfig.baseUrl;
   final String baseUrlLogin = ApiConfig.baseUrlLogin;
-  final FlutterSecureStorage _secureStorage = FlutterSecureStorage();
   LivreurService();
 
   Future<String> inscrireLivreur(String codeInscription) async {
@@ -42,7 +40,7 @@ class LivreurService {
       await http.post(
         url,
         body: jsonEncode(body),
-        headers: await getAuthHeaders(),
+        headers: await authHeadersValid(numeroLivreur),
       );
     } catch (e) {
       // On ne bloque pas l'utilisateur, juste log l'erreur
@@ -82,37 +80,6 @@ class LivreurService {
     );
     final exp = payload['exp'] * 1000;
     return DateTime.now().millisecondsSinceEpoch > exp;
-  }
-
-  Future<String> authentLivreur(Map<String, dynamic> data) async {
-    final res = await http.post(
-      Uri.parse('$baseUrlLogin/livreur/login'),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode(data),
-    );
-
-    if (res.statusCode == 200) {
-      final body = jsonDecode(res.body);
-      return body['token'];
-    } else {
-      throw Exception('Erreur serveur: ${res.body}');
-    }
-  }
-
-  Future<String> getValidToken(Map<String, dynamic> data) async {
-    final storedToken = await _secureStorage.read(key: 'jwt_token');
-    if (storedToken != null && !isTokenExpired(storedToken)) {
-      return storedToken;
-    }
-    // 🔥 Nouveau token
-    final newToken = await authentLivreur(data);
-    // 🔐 STOCKAGE OBLIGATOIRE
-    await _secureStorage.write(
-      key: 'jwt_token',
-      value: newToken.trim(), // important iOS
-    );
-
-    return newToken;
   }
 
   Future<Map<String, dynamic>> fetchVersion(String version) async {

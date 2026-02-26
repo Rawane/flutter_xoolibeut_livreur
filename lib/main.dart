@@ -25,19 +25,54 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// Notification channel FlutterLocalNotifications
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
 
 // Handler en background FCM
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
 }
 
+// Son personnalisé Android
+const AndroidNotificationChannel xamxamChannel = AndroidNotificationChannel(
+  'xamxam_channel', // id
+  'XamXam Notifications', // name
+  description: 'Notifications pour XamXam livraison',
+  importance: Importance.max,
+  sound: RawResourceAndroidNotificationSound('xamxam_livraison'),
+  playSound: true,
+);
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   await initializeDateFormatting('fr_FR', null);
+
+  // Initialisation du plugin de notifications
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >()
+      ?.createNotificationChannel(xamxamChannel);
+
+  // Initialisation Android
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+  final InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+  );
+  await flutterLocalNotificationsPlugin.initialize(
+    initializationSettings,
+    onDidReceiveNotificationResponse: (NotificationResponse response) {
+      // Optionnel : handle click
+    },
+  );
 
   final livreurService = LivreurService();
   final livraisonService = LivraisonService();
@@ -74,7 +109,6 @@ void main() async {
             livraisonService: livraisonService,
             token: 'TOKEN_FIXE_OU_RECUPERE',
           ),
-
           '/infos-livraison': (context) => InfosLivraisonPage(),
           '/livraison-terminee': (context) => LivraisonTermineePage(),
           '/map': (context) => LivraisonMapPage(
@@ -91,11 +125,44 @@ void main() async {
   FirebaseMessaging messaging = FirebaseMessaging.instance;
   await messaging.requestPermission(alert: true, badge: true, sound: true);
 
-  // Notifications clickées globalement
   FirebaseMessaging.instance.getInitialMessage().then((message) {
     if (message != null) {
       _handleNotificationNavigation(message);
     }
+  });
+
+  // Foreground notification
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+    RemoteNotification? notification = message.notification;
+    AndroidNotification? android = message.notification?.android;
+
+    if (notification != null && android != null) {
+      final AndroidNotificationDetails androidDetails =
+          AndroidNotificationDetails(
+            xamxamChannel.id,
+            xamxamChannel.name,
+            channelDescription: xamxamChannel.description,
+            importance: Importance.max,
+            priority: Priority.high,
+            playSound: true,
+            sound: RawResourceAndroidNotificationSound('xamxam_livraison'),
+          );
+
+      final NotificationDetails platformDetails = NotificationDetails(
+        android: androidDetails,
+      );
+
+      await flutterLocalNotificationsPlugin.show(
+        notification.hashCode,
+        notification.title,
+        notification.body,
+        platformDetails,
+      );
+    }
+  });
+
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    _handleNotificationNavigation(message);
   });
 }
 
@@ -158,37 +225,34 @@ class _AppInitializerState extends State<AppInitializer> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await checkVersion();
     });
-    _initFCM();
     _loadDisclosureStatus();
   }
 
-  // ✅ Check version + soft/hard update
+  // Version check
   Future<void> checkVersion() async {
     try {
-      // 1️⃣ Récupère la version de l'app
       final packageInfo = await PackageInfo.fromPlatform();
       final currentVersion = packageInfo.version;
 
-      // 2️⃣ Récupère la version depuis ton backend
       final versionData = await widget.livreurService.fetchVersion(
         currentVersion,
       );
-      // 3️⃣ Sélection selon plateforme
+
       final minVersion = Platform.isAndroid
           ? versionData['minVersionAndroid']
           : versionData['minVersionIos'];
-      final forceUpdate = versionData['forceUpdate'] ?? false;
+      final forceUpdate = Platform.isAndroid
+          ? versionData['forceUpdateAndroid']
+          : versionData['forceUpdateIos'];
+
       final storeUrl = Platform.isAndroid
           ? versionData['androidUrl']
           : versionData['iosUrl'];
-
       final message =
           versionData['message'] ?? "Une nouvelle version est disponible.";
 
-      // 4️⃣ Compare la version installée avec la version minimale
       final isOutdated = _isVersionLower(currentVersion, minVersion);
 
-      // 5️⃣ Si obsolète
       if (isOutdated) {
         showUpdateDialog(forceUpdate, message, storeUrl);
       }
@@ -197,7 +261,6 @@ class _AppInitializerState extends State<AppInitializer> {
     }
   }
 
-  // Comparaison simple de version
   bool _isVersionLower(String current, String min) {
     final currentParts = current.split('.').map(int.parse).toList();
     final minParts = min.split('.').map(int.parse).toList();
@@ -210,13 +273,12 @@ class _AppInitializerState extends State<AppInitializer> {
     return false;
   }
 
-  // Affiche le dialog
   void showUpdateDialog(bool force, String message, String storeUrl) {
     showDialog(
       context: context,
-      barrierDismissible: !force, // soft update = dismissible
+      barrierDismissible: !force,
       builder: (_) => WillPopScope(
-        onWillPop: () async => !force, // bloque le back si hard update
+        onWillPop: () async => !force,
         child: AlertDialog(
           title: const Text("Mise à jour disponible"),
           content: Text(message),
@@ -228,7 +290,6 @@ class _AppInitializerState extends State<AppInitializer> {
                   uri,
                   mode: LaunchMode.externalApplication,
                 )) {
-                  // fallback
                   print("Impossible d'ouvrir le store");
                 }
               },
@@ -254,38 +315,6 @@ class _AppInitializerState extends State<AppInitializer> {
     });
   }
 
-  void _initFCM() {
-    if (_fcmInitialized) return;
-    _fcmInitialized = true;
-
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      if (!mounted) return;
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          title: Text(message.notification?.title ?? 'Notification'),
-          content: const Text('Voir la demande sur la carte'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context, rootNavigator: true).pop();
-                _handleNotificationNavigation(message);
-              },
-              child: const Text('Voir'),
-            ),
-          ],
-        ),
-      );
-    });
-
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      if (!mounted) return;
-      _handleNotificationNavigation(message);
-    });
-  }
-
   Future<void> _startLocationIfNeeded(String numeroLivreur) async {
     if (_locationServiceStarted) return;
     _locationServiceStarted = true;
@@ -294,7 +323,6 @@ class _AppInitializerState extends State<AppInitializer> {
       await requestLocationPermission();
       await startLocationService();
     } catch (_) {
-      // volontairement silencieux (prod)
       _locationServiceStarted = false;
     }
   }
@@ -303,13 +331,10 @@ class _AppInitializerState extends State<AppInitializer> {
   Widget build(BuildContext context) {
     return Consumer<LivreurProvider>(
       builder: (context, livreurProvider, _) {
-        if (livreurProvider.isLoading) {
+        if (livreurProvider.isLoading || !_checkedDisclosure) {
           return const SplashPage();
         }
-        if (!_checkedDisclosure) {
-          return const SplashPage(); // évite le clignotement
-        }
-        // 1️⃣ DISCLOSURE AVANT TOUT
+
         if (!_disclosureAccepted) {
           return LocationDisclosurePage(
             onAccepted: () async {
@@ -324,8 +349,6 @@ class _AppInitializerState extends State<AppInitializer> {
         }
 
         final numeroLivreur = livreurProvider.numeroLivreur;
-
-        // 2️⃣ UTILISATEUR INSCRIT → GPS + DASHBOARD
         if (numeroLivreur != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _startLocationIfNeeded(numeroLivreur);
@@ -334,7 +357,6 @@ class _AppInitializerState extends State<AppInitializer> {
           return DashboardPage(livreurService: widget.livreurService);
         }
 
-        // 3️⃣ SINON → INSCRIPTION
         return InscriptionPage(livreurService: widget.livreurService);
       },
     );

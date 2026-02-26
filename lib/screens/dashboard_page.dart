@@ -45,7 +45,7 @@ class _DashboardPageState extends State<DashboardPage> {
       "numeroLivreur": numeroLivreur,
       "deviceUuid": deviceUuid,
     }; // 🔥 récupère l'UUID sécurisé
-    final token = await widget.livreurService.getValidToken(data);
+    final token = await getValidToken(data);
 
     return token;
   }
