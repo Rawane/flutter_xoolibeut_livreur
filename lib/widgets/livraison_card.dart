@@ -38,15 +38,28 @@ class LivraisonCard extends StatelessWidget {
     }
   }
 
-  Future<void> _callPhone(String? phone, BuildContext context) async {
-    if (phone == null || phone.isEmpty) return;
-    final uri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Impossible d'appeler ce numéro")),
-      );
+  // 1. Ajoute le paramètre BuildContext ici
+  void _showSnack(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: const Color(
+          0xFF00353F,
+        ), // Utilise ta couleur ou AppColors.primaryBlue
+      ),
+    );
+  }
+
+  Future<void> _callPhone(BuildContext context, String? phone) async {
+    if (phone == null || phone.trim().isEmpty) {
+      _showSnack(context, "Numéro de téléphone indisponible");
+      return;
+    }
+    final uri = Uri.parse('tel:${phone.trim()}');
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      _showSnack(context, "Impossible d'appeler ce numéro");
     }
   }
 
@@ -164,7 +177,7 @@ class LivraisonCard extends StatelessWidget {
                       IconButton(
                         icon: const Icon(Icons.phone, color: Colors.green),
                         tooltip: "Appeler le client",
-                        onPressed: () => _callPhone(l.telephoneClient, context),
+                        onPressed: () => _callPhone(context, l.telephoneClient),
                       ),
                     ],
                   ),
@@ -197,7 +210,7 @@ class LivraisonCard extends StatelessWidget {
                           icon: const Icon(Icons.phone, color: Colors.green),
                           tooltip: "Appeler le client",
                           onPressed: () =>
-                              _callPhone(l.telephoneDepart, context),
+                              _callPhone(context, l.telephoneDepart),
                         ),
                       ],
                     ),
@@ -231,7 +244,7 @@ class LivraisonCard extends StatelessWidget {
                           icon: const Icon(Icons.phone, color: Colors.green),
                           tooltip: "Appeler Contact Arrivé",
                           onPressed: () =>
-                              _callPhone(l.telephoneArrive, context),
+                              _callPhone(context, l.telephoneArrive),
                         ),
                       ],
                     ),

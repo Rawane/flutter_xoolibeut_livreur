@@ -169,14 +169,15 @@ void main() async {
 void _handleNotificationNavigation(RemoteMessage message) {
   final data = message.data;
 
-  final numeroLivraison = data['numeroLivraison'];
-  final lat = double.tryParse(data['lat'] ?? '');
-  final lng = double.tryParse(data['lng'] ?? '');
-
-  navigatorKey.currentState?.pushNamed(
-    "/map",
-    arguments: {"numeroLivraison": numeroLivraison, "lat": lat, "lng": lng},
-  );
+  // SÉCURITÉ : Si la notification n'a pas de données (test simple),
+  // on ne tente pas d'ouvrir la page de livraison.
+  if (data.isEmpty || data['numeroLivraison'] == null) {
+    debugPrint("Notification de test reçue sans données : Navigation annulée");
+    // Option : Tu peux rediriger vers le dashboard simple à la place
+    navigatorKey.currentState?.pushNamed("/dashboard");
+    return;
+  }
+  navigatorKey.currentState?.pushNamed("/livraisons");
 }
 
 /// Permissions GPS
@@ -214,7 +215,6 @@ class AppInitializer extends StatefulWidget {
 }
 
 class _AppInitializerState extends State<AppInitializer> {
-  bool _fcmInitialized = false;
   bool _locationServiceStarted = false;
   bool _disclosureAccepted = false;
   bool _checkedDisclosure = false;
