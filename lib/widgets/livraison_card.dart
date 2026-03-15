@@ -22,30 +22,27 @@ class LivraisonCard extends StatelessWidget {
   Color getStatusColor(String? status) {
     switch (status) {
       case 'DEMANDE':
-        return Colors.orange; // demande en attente
+        return Colors.orange;
       case 'ACCEPTE':
-        return Colors.green; // accepté par le système / client
+        return Colors.green;
       case 'PRIS_PAR_LIVREUR':
-        return Colors.blue; // en cours de livraison
+        return Colors.blue;
       case 'LIVRE':
-        return Colors.green.shade800; // terminé avec succès
+        return Colors.green.shade800;
       case 'ANNULE':
-        return Colors.red; // annulé
+        return Colors.red;
       case 'EN_ATTENTE':
-        return Colors.grey; // attente générale
+        return Colors.grey;
       default:
         return Colors.grey;
     }
   }
 
-  // 1. Ajoute le paramètre BuildContext ici
   void _showSnack(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: const Color(
-          0xFF00353F,
-        ), // Utilise ta couleur ou AppColors.primaryBlue
+        backgroundColor: const Color(0xFF00353F),
       ),
     );
   }
@@ -64,27 +61,54 @@ class LivraisonCard extends StatelessWidget {
   }
 
   Future<void> _openWhatsApp(String numero) async {
-    final url = Uri.parse("https://wa.me/$numero");
+    final url = Uri.parse("https://wa.me/221$numero");
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
-    } else {
-      const SnackBar(content: Text("Impossible d'ouvrir WhatsApp"));
     }
   }
 
-  String formatDate(DateTime? date) {
-    if (date == null) return '---';
-    return DateFormat('EEEE d MMMM', 'fr_FR').format(date);
-  }
+  String formatDate(DateTime? date) =>
+      date == null ? '---' : DateFormat('EEEE d MMMM', 'fr_FR').format(date);
+  String formatHeure(DateTime? date) =>
+      date == null ? '---' : DateFormat('HH:mm').format(date);
 
-  String formatHeure(DateTime? date) {
-    if (date == null) return '---';
-    return DateFormat('HH:mm').format(date);
+  // Widget réutilisable pour les lignes de téléphone
+  Widget _buildPhoneActionRow(
+    BuildContext context,
+    String label,
+    String? phone,
+    Color color,
+  ) {
+    if (phone == null || phone.trim().isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              "$label: $phone",
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          IconButton(
+            icon: FaIcon(FontAwesomeIcons.whatsapp, color: color, size: 20),
+            onPressed: () => _openWhatsApp(phone),
+          ),
+          IconButton(
+            icon: Icon(Icons.phone, color: color, size: 20),
+            onPressed: () => _callPhone(context, phone),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final l = livraison;
+    final bool peutVoirContacts =
+        l.statusLivraison == 'ACCEPTE' ||
+        l.statusLivraison == 'PRIS_PAR_LIVREUR';
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -136,134 +160,90 @@ class LivraisonCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "Numéro : ${l.numero}",
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                // --- LIGNE NUMÉRO + PRIX ---
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Numéro : ${l.numero}",
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    // AFFICHAGE DU PRIX SI NON NULL ET NON VIDE
+                    if (l.showPrix &&
+                        l.prixLivraison != null &&
+                        l.prixLivraison!.trim().isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(
+                            0xFFE8F5E9,
+                          ), // Fond vert très clair
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.green.shade300,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          "${l.prixLivraison} FCFA",
+                          style: TextStyle(
+                            color: Colors.green.shade900,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 Text("Description : ${l.description ?? '---'}"),
                 const SizedBox(height: 4),
                 Text("Départ : ${l.lieuDepart ?? '---'}"),
                 Text("Arrivée : ${l.lieuArrive ?? '---'}"),
-                const SizedBox(height: 4),
-                if (l.statusLivraison != 'DEMANDE') ...[
+
+                // --- SECTION TÉLÉPHONES (Conditionnelle) ---
+                if (peutVoirContacts) ...[
+                  const Divider(height: 24),
                   Text(
                     "Client : ${l.nomClient ?? '---'}",
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  Row(
-                    children: [
-                      const SizedBox(width: 8),
-                      Text(
-                        "Téléphone Client: ${l.telephoneClient ?? '---'}",
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(width: 8),
-                      // Button WhatsApp
-                      IconButton(
-                        icon: FaIcon(
-                          FontAwesomeIcons.whatsapp,
-                          color: Colors.green,
-                        ),
-                        tooltip: "Envoyer message WhatsApp",
-                        onPressed: () {
-                          if (l.telephoneClient != null) {
-                            String tel = l.telephoneClient!;
-                            _openWhatsApp('221$tel');
-                          }
-                        },
-                      ),
-
-                      IconButton(
-                        icon: const Icon(Icons.phone, color: Colors.green),
-                        tooltip: "Appeler le client",
-                        onPressed: () => _callPhone(context, l.telephoneClient),
-                      ),
-                    ],
+                  _buildPhoneActionRow(
+                    context,
+                    "Tél Client",
+                    l.telephoneClient,
+                    Colors.green,
                   ),
-                  if ((l.telephoneDepart ?? '').trim().isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const SizedBox(width: 8),
-                        Text(
-                          "Téléphone Départ: ${l.telephoneDepart ?? '---'}",
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(width: 8),
-                        // Button WhatsApp
-                        IconButton(
-                          icon: FaIcon(
-                            FontAwesomeIcons.whatsapp,
-                            color: Colors.green,
-                          ),
-                          tooltip: "Envoyer message WhatsApp",
-                          onPressed: () {
-                            if (l.telephoneDepart != null) {
-                              String tel = l.telephoneDepart!;
-                              _openWhatsApp('221$tel');
-                            }
-                          },
-                        ),
-
-                        IconButton(
-                          icon: const Icon(Icons.phone, color: Colors.green),
-                          tooltip: "Appeler le client",
-                          onPressed: () =>
-                              _callPhone(context, l.telephoneDepart),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if ((l.telephoneArrive ?? '').trim().isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const SizedBox(width: 8),
-                        Text(
-                          "Téléphone Arrivée: ${l.telephoneArrive ?? '---'}",
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(width: 8),
-                        // Button WhatsApp
-                        IconButton(
-                          icon: FaIcon(
-                            FontAwesomeIcons.whatsapp,
-                            color: Colors.green,
-                          ),
-                          tooltip: "Envoyer message WhatsApp",
-                          onPressed: () {
-                            if (l.telephoneArrive != null) {
-                              String tel = l.telephoneArrive!;
-                              _openWhatsApp('221$tel');
-                            }
-                          },
-                        ),
-
-                        IconButton(
-                          icon: const Icon(Icons.phone, color: Colors.green),
-                          tooltip: "Appeler Contact Arrivé",
-                          onPressed: () =>
-                              _callPhone(context, l.telephoneArrive),
-                        ),
-                      ],
-                    ),
-                  ],
+                  _buildPhoneActionRow(
+                    context,
+                    "Tél Départ",
+                    l.telephoneDepart,
+                    Colors.blue,
+                  ),
+                  _buildPhoneActionRow(
+                    context,
+                    "Tél Arrivée",
+                    l.telephoneArrive,
+                    Colors.red,
+                  ),
                 ],
+
                 if ((l.commentaire ?? '').trim().isNotEmpty) ...[
                   const SizedBox(height: 8),
-                  Text(
+                  const Text(
                     "Commentaire :",
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 4),
                   Text(
                     l.commentaire!,
                     style: const TextStyle(color: Colors.black87),
                   ),
                 ],
 
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -281,184 +261,133 @@ class LivraisonCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // --- DISTANCE VERS RAMASSAGE ---
+                    if (l.distanceAffiche != null)
+                      _buildDistanceIndicator(
+                        icon: Icons.navigation_outlined,
+                        label: "Aller chercher le colis :",
+                        distance: l.distanceAffiche ?? '',
+                        color: Colors.blueAccent,
+                      ),
+
+                    const SizedBox(height: 8),
+
+                    // --- DISTANCE DU TRAJET (Ramassage -> Dest) ---
+                    _buildDistanceIndicator(
+                      icon: Icons.local_shipping_outlined,
+                      label: "Trajet de livraison :",
+                      distance: l.distanceAfficheAversB ?? '',
+                      color: Colors.orange[700]!,
+                    ),
+                  ],
+                ),
+                // --- BOUTONS D'ACTIONS ---
                 if (l.statusLivraison == 'ACCEPTE') ...[
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () => onActionPressedAnnulerColis?.call(),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color.fromARGB(
-                              255,
-                              194,
-                              59,
-                              17,
-                            ),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: const Text("Annuler la livraison"),
-                        ),
-                      ),
-                      // 1️⃣ Je suis en route
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () => onActionPressed?.call(),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF00353F),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: const Text("Je suis en route"),
-                        ),
-                      ),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () => onActionPressedColis?.call(),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF00353F),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: const Text("Colis Recupéré"),
-                        ),
-                      ),
-                      // 2️⃣ Informations
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.pushNamed(
-                              context,
-                              '/infos-livraison',
-                              arguments: livraison,
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF004A5A),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: const Text("Informations"),
-                        ),
-                      ),
-                    ],
+                  _buildButton(
+                    label: "Annuler la livraison",
+                    color: const Color.fromARGB(255, 194, 59, 17),
+                    onTap: onActionPressedAnnulerColis,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildButton(
+                    label: "Je suis en route",
+                    color: const Color(0xFF00353F),
+                    onTap: onActionPressed,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildButton(
+                    label: "Colis Récupéré",
+                    color: const Color(0xFF00353F),
+                    onTap: onActionPressedColis,
                   ),
                 ],
+
                 if (l.statusLivraison == 'PRIS_PAR_LIVREUR') ...[
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      // 2️⃣ Informations
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.pushNamed(
-                              context,
-                              '/infos-livraison',
-                              arguments: livraison,
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF004A5A),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: const Text("Informations"),
-                        ),
-                      ),
-
-                      // 3️⃣ Livrée
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.pushNamed(
-                              context,
-                              '/livraison-terminee',
-                              arguments: livraison,
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF005C6D),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: const Text("Livrée"),
-                        ),
-                      ),
-                    ],
+                  _buildButton(
+                    label: "Livrée",
+                    color: const Color(0xFF005C6D),
+                    onTap: () => Navigator.pushNamed(
+                      context,
+                      '/livraison-terminee',
+                      arguments: l,
+                    ),
                   ),
                 ],
 
-                /// 🟠 BOUTON ACCEPTER LIVRAISON
                 if (l.statusLivraison == 'DEMANDE' &&
                     onActionPressed != null) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => onActionPressed!.call(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryBlue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      child: const Text(
-                        "Accepter la livraison",
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
+                  const SizedBox(height: 16),
+                  _buildButton(
+                    label: "Accepter la livraison",
+                    color: AppColors.primaryBlue,
+                    onTap: onActionPressed,
                   ),
                 ],
-
-                /*if (onActionPressed != null)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.local_shipping,
-                        color: Colors.green,
-                      ),
-                      tooltip: "Action",
-                      onPressed: onActionPressed,
-                    ),
-                  ),*/
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  // Helper pour uniformiser les boutons
+  Widget _buildButton({
+    required String label,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
+  // Petit helper pour construire la ligne
+  Widget _buildDistanceIndicator({
+    required IconData icon,
+    required String label,
+    required String distance,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
+        Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            distance,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: color,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

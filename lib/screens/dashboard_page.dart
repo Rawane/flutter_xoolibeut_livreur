@@ -299,9 +299,12 @@ class _DashboardPageState extends State<DashboardPage> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        icon: const Icon(Icons.gps_fixed, color: Colors.white),
+                        icon: const Icon(
+                          Icons.play_circle_fill,
+                          color: Colors.white,
+                        ),
                         label: const Text(
-                          "Démarrer le suivi",
+                          "Démarrer le service",
                           style: TextStyle(fontSize: 16, color: Colors.white),
                         ),
                         style: ElevatedButton.styleFrom(
@@ -320,7 +323,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         icon: Icon(
-                          Icons.delivery_dining,
+                          Icons.notifications_active,
                           color: AppColors.primaryBlue,
                         ),
                         label: Text(
@@ -345,46 +348,14 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: Icon(
-                          Icons.map_outlined,
-                          color: AppColors.primaryBlue,
-                        ),
-                        label: Text(
-                          'Voir sur la carte',
-                          style: TextStyle(
-                            color: AppColors.primaryBlue,
-                            fontSize: 16,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: AppColors.primaryBlue,
-                            width: 2,
-                          ),
-                          backgroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: _openMapPage,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
 
                     // Livraisons acceptées
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        icon: Icon(
-                          Icons.assignment_turned_in,
-                          color: AppColors.primaryBlue,
-                        ),
+                        icon: Icon(Icons.local_shipping, color: Colors.red),
                         label: Text(
-                          'Acceptées/Acheminement en cours',
+                          'Acceptées/Suivies',
                           style: TextStyle(
                             color: AppColors.primaryBlue,
                             fontSize: 16,
@@ -414,7 +385,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         icon: Icon(
-                          Icons.check_circle_outline,
+                          Icons.task_alt,
                           color: AppColors.primaryBlue,
                         ),
                         label: Text(
@@ -446,7 +417,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         icon: Icon(
-                          Icons.map_outlined,
+                          Icons.leaderboard,
                           color: AppColors.primaryBlue,
                         ),
                         label: Text(
@@ -468,6 +439,35 @@ class _DashboardPageState extends State<DashboardPage> {
                           ),
                         ),
                         onPressed: _openTableauBord,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: Icon(
+                          Icons.explore_outlined,
+                          color: AppColors.primaryBlue,
+                        ),
+                        label: Text(
+                          'Voir sur la carte',
+                          style: TextStyle(
+                            color: AppColors.primaryBlue,
+                            fontSize: 16,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: AppColors.primaryBlue,
+                            width: 2,
+                          ),
+                          backgroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(50),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: _openMapPage,
                       ),
                     ),
                   ],

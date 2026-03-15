@@ -3,6 +3,8 @@ import 'package:uuid/uuid.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:xoolibeut_livreur/config/api_config.dart';
+import 'package:flutter/material.dart';
+import 'package:xoolibeut_livreur/services/livraison_service.dart';
 
 final _secureStorage = FlutterSecureStorage();
 final _uuid = Uuid();
@@ -57,16 +59,26 @@ Future<String> authentLivreur(Map<String, dynamic> data) async {
   }
 }
 
+// 1. Version sécurisée (évite le crash si le token est bizarre)
 bool isTokenExpired(String token) {
-  final parts = token.split('.');
-  final payload = json.decode(
-    utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
-  );
-  final exp = payload['exp'] * 1000;
-  return DateTime.now().millisecondsSinceEpoch > exp;
+  try {
+    final parts = token.split('.');
+    if (parts.length < 2)
+      return true; // Token invalide -> on force la reconnexion
+    final payload = json.decode(
+      utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+    );
+
+    // On multiplie par 1000 pour passer des secondes aux millisecondes
+    final int exp = payload['exp'] * 1000;
+    return DateTime.now().millisecondsSinceEpoch > exp;
+  } catch (e) {
+    // Si une erreur survient pendant le décodage, on considère le token expiré
+    return true;
+  }
 }
 
-Future<Map<String, String>> authHeaders(String? token) async {
+Map<String, String> authHeaders(String? token) {
   return {
     'Content-Type': 'application/json',
     if (token != null) 'Authorization': 'Bearer $token',
@@ -76,7 +88,7 @@ Future<Map<String, String>> authHeaders(String? token) async {
 Future<Map<String, String>> authHeadersValid(String numeroLivreur) async {
   final Map<String, dynamic> data = {
     "numeroLivreur": numeroLivreur,
-    "deviceUuid": getDeviceUuid(),
+    "deviceUuid": await getDeviceUuid(),
   };
   final token = await getValidToken(data);
   return authHeaders(token);
@@ -96,5 +108,55 @@ Future<Map<String, String>> getAuthHeaders() async {
     await _secureStorage.deleteAll();
 
     return {'Content-Type': 'application/json'};
+  }
+}
+
+class ErrorHandler {
+  static void showServiceError(BuildContext context, dynamic error) {
+    String message;
+
+    if (error is NoInternetException) {
+      message = "🌐 Pas de connexion. Vérifiez votre Wi-Fi ou vos données.";
+    } else if (error is RequestTimeoutException) {
+      message = "⏳ Le serveur est trop lent. Veuillez réessayer.";
+    } else if (error is LivreurSuspenduException) {
+      message = "🚫 Compte suspendu. Contactez l'administrateur.";
+      _showCriticalErrorDialog(context, message);
+      return;
+    } else {
+      // Pour les exceptions générales throw Exception("...")
+      message = error.toString().replaceFirst("Exception: ", "");
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: "OK",
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
+  static void _showCriticalErrorDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text("Action Requise"),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("Compris"),
+          ),
+        ],
+      ),
+    );
   }
 }

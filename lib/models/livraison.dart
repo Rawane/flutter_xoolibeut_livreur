@@ -36,6 +36,8 @@ class LivraisonLivreur {
   final String? lieuDepart;
   final String? lieuArrive;
   final String? distanceAffiche;
+  final String? distanceAfficheAversB;
+
   final double? distance;
   final String? nomClient;
   final String? telephoneClient;
@@ -47,6 +49,8 @@ class LivraisonLivreur {
   final String? telephoneDepart;
   final String? telephoneArrive;
   final String? commentaire;
+  final String? prixLivraison;
+  final bool showPrix;
 
   LivraisonLivreur({
     required this.numero,
@@ -60,6 +64,7 @@ class LivraisonLivreur {
     this.lieuDepart,
     this.lieuArrive,
     this.distanceAffiche,
+    this.distanceAfficheAversB,
     this.distance,
     this.nomClient,
     this.telephoneClient,
@@ -70,6 +75,8 @@ class LivraisonLivreur {
     this.telephoneDepart,
     this.telephoneArrive,
     this.commentaire,
+    this.prixLivraison,
+    required this.showPrix,
   });
 
   factory LivraisonLivreur.fromJson(Map<String, dynamic> json) {
@@ -87,7 +94,9 @@ class LivraisonLivreur {
       lieuDepart: json['lieuDepart'],
       lieuArrive: json['lieuArrive'],
       distanceAffiche: json['distanceAffiche'],
+      distanceAfficheAversB: json['distanceAfficheAversB'],
       distance: json['distance'],
+      prixLivraison: (json['prixLivraison'] as num?)?.toInt().toString() ?? "0",
       nomClient: json['nomClient'],
       telephoneClient: json['telephoneClient'],
       telephoneDepart: json['telephoneDepart'],
@@ -106,6 +115,7 @@ class LivraisonLivreur {
       longitudeDestinataire: json['longitudeDestinataire'] != null
           ? (json['longitudeDestinataire'] as num).toDouble()
           : null,
+      showPrix: json['showPrix'],
     );
   }
 }

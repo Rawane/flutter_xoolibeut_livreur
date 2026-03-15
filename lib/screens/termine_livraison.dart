@@ -33,7 +33,12 @@ class _LivraisonTermineePageState extends State<LivraisonTermineePage> {
       await service.terminerLivraison(numeroLivreur, livraison.numero);
 
       _showSnack("Livraison terminée avec succès !");
-      Navigator.pop(context);
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/livraisonsAcceptees',
+        (route) => route
+            .isFirst, // Garde seulement l'accueil/index et met la liste par-dessus
+      );
     } catch (e) {
       _showSnack("Erreur : $e");
     } finally {

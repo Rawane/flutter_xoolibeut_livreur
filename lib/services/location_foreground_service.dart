@@ -13,60 +13,107 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
 final String baseUrl = ApiConfig.baseUrl;
-
-/// 🔹 Fonction exécutée par le service background
 @pragma('vm:entry-point')
 Future<bool> onStart(ServiceInstance service) async {
   if (service is AndroidServiceInstance) {
     service.setForegroundNotificationInfo(
       title: "XamXam Livreur",
-      content: "Suivi de la position en cours",
+      content: "Suivi de la position et présence activés",
     );
   }
 
-  Timer? timer;
+  // 1. Écouter les déplacements (Distance Filter: 100m)
+  // Cette partie s'occupe de la précision du trajet
+  Geolocator.getPositionStream(
+    locationSettings: AndroidSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 100, // Se déclenche tous les 100 mètres
+      foregroundNotificationConfig: ForegroundNotificationConfig(
+        notificationTitle: "XamXam Livreur",
+        notificationText: "Suivi de trajet en cours...",
+        enableWakeLock: true,
+      ),
+    ),
+  ).listen((Position position) {
+    _processAndSyncPosition(position);
+  });
+
+  // 2. Heartbeat Timer (Toutes les 6 minutes)
+  // Cette partie assure la présence serveur même à l'arrêt
+  Timer.periodic(const Duration(minutes: 6), (_) async {
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+        ),
+      );
+      _processAndSyncPosition(position);
+    } catch (e) {
+      //  debugPrint("Erreur Heartbeat: $e");
+    }
+  });
 
   service.on('stopService').listen((_) {
-    timer?.cancel();
     service.stopSelf();
   });
 
-  timer = Timer.periodic(Duration(seconds: ApiConfig.positionUpdateInterval), (
-    _,
-  ) async {
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-
-      final permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
-          timeLimit: Duration(seconds: 15),
-        ),
-      );
-
-      final prefs = await SharedPreferences.getInstance();
-      final numeroLivreur = prefs.getString('numeroLivreur') ?? 'unknown';
-
-      await http.post(
-        Uri.parse('$baseUrl/v2/position/$numeroLivreur'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'latitude': position.latitude,
-          'longitude': position.longitude,
-          'timestamp': DateTime.now().toIso8601String(),
-        }),
-      );
-    } catch (_) {}
-  });
-
   return true;
+}
+
+/// Fonction de traitement globale : Sauvegarde locale + Envoi Bulk
+Future<void> _processAndSyncPosition(Position pos) async {
+  final prefs = await SharedPreferences.getInstance();
+  final String? numeroLivreur = prefs.getString('numeroLivreur');
+  if (numeroLivreur == null) return;
+
+  // Création du point actuel
+  final Map<String, dynamic> currentPos = {
+    'latitude': pos.latitude,
+    'longitude': pos.longitude,
+    'positionDate': DateTime.now().toIso8601String(),
+  };
+
+  // Récupérer l'historique non envoyé
+  List<String> offlineQueue = prefs.getStringList('offline_positions') ?? [];
+
+  // Fusionner pour l'envoi
+  List<Map<String, dynamic>> allPositions = offlineQueue
+      .map((e) => jsonDecode(e) as Map<String, dynamic>)
+      .toList();
+  allPositions.add(currentPos);
+
+  try {
+    // Tentative d'envoi groupé (Bulk)
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/position/$numeroLivreur'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(allPositions),
+        )
+        .timeout(const Duration(seconds: 15));
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      // Succès : on vide le stockage local
+      await prefs.remove('offline_positions');
+    } else {
+      // Erreur serveur : on stocke pour plus tard
+      _saveLocally(prefs, offlineQueue, currentPos);
+    }
+  } catch (e) {
+    // Pas de réseau : on stocke pour plus tard
+    _saveLocally(prefs, offlineQueue, currentPos);
+  }
+}
+
+void _saveLocally(
+  SharedPreferences prefs,
+  List<String> queue,
+  Map<String, dynamic> data,
+) {
+  // On garde max 1000 points (sécurité mémoire)
+  if (queue.length > 1000) queue.removeAt(0);
+  queue.add(jsonEncode(data));
+  prefs.setStringList('offline_positions', queue);
 }
 
 /// 🔹 Initialisation des notifications
