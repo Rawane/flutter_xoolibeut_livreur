@@ -4,8 +4,8 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:xoolibeut_livreur/utils/exception_xoolibeut.dart';
 import '../config/api_config.dart';
-import '../services/livraison_service.dart';
 
 class LivreurProvider extends ChangeNotifier {
   String? _numeroLivreur;

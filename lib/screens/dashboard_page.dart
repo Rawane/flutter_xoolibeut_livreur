@@ -1,121 +1,86 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:xoolibeut_livreur/services/livreur_service.dart';
-import 'package:xoolibeut_livreur/services/location_foreground_service.dart';
-import '../theme.dart';
-import '../widgets/custom_app_bar.dart';
-import 'package:xoolibeut_livreur/utils/device_utils.dart';
-import '../providers/livreur_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'dart:io';
+
+import '../theme.dart';
+import '../widgets/custom_app_bar.dart';
+import '../providers/livreur_provider.dart';
+import '../services/livreur_service.dart';
+import '../services/location_foreground_service.dart';
+import '../utils/device_utils.dart';
 
 class DashboardPage extends StatefulWidget {
-  DashboardPage({super.key, required this.livreurService});
+  const DashboardPage({super.key, required this.livreurService});
   final LivreurService livreurService;
+
   @override
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  double? latitude;
-  double? longitude;
   static bool _alreadyCalled = false;
+
   @override
   void initState() {
     super.initState();
-    // Appels non bloquants
     Future.microtask(() {
       if (!mounted) return;
-      Provider.of<ContactProvider>(context, listen: false).loadContact();
+      context.read<ContactProvider>().loadContact();
       _initFirebaseMessaging();
     });
   }
 
-  void _safeNavigate(String route) {
-    if (!mounted) return;
-    Navigator.of(context).pushNamed(route);
+  // --- LOGIQUE MÉTIER ---
+
+  void _initFirebaseMessaging() async {
+    if (_alreadyCalled) return;
+    try {
+      final messaging = FirebaseMessaging.instance;
+      await messaging.requestPermission(alert: true, badge: true, sound: true);
+      final token = await messaging.getToken();
+
+      if (!mounted) return;
+      final numeroLivreur = context.read<LivreurProvider>().numeroLivreur;
+      if (numeroLivreur == null) return;
+
+      final deviceUuid = await getDeviceUuid();
+      final deviceName = await _getDeviceModel();
+
+      _alreadyCalled = true;
+      await widget.livreurService.sendTokenFCM(
+        numeroLivreur: numeroLivreur,
+        token: token,
+        device: deviceName,
+        deviceId: deviceUuid,
+      );
+
+      final data = {"numeroLivreur": numeroLivreur, "deviceUuid": deviceUuid};
+      await getValidToken(data);
+    } catch (_) {}
   }
 
-  Future<String?> authenticate(String numeroLivreur) async {
-    final deviceUuid = await getDeviceUuid();
-    final Map<String, dynamic> data = {
-      "numeroLivreur": numeroLivreur,
-      "deviceUuid": deviceUuid,
-    }; // 🔥 récupère l'UUID sécurisé
-    final token = await getValidToken(data);
-
-    return token;
+  Future<String> _getDeviceModel() async {
+    final deviceInfo = DeviceInfoPlugin();
+    if (Platform.isAndroid) return (await deviceInfo.androidInfo).model;
+    if (Platform.isIOS) return (await deviceInfo.iosInfo).utsname.machine;
+    return "Unknown Device";
   }
 
-  Future<void> _startTrackingService() async {
+  Future<void> _handleStartService() async {
     try {
       await requestLocationPermission();
       await startLocationService();
-
-      if (!mounted) return;
       _showSnack("Suivi de position activé");
     } catch (e) {
-      if (!mounted) return;
       _showSnack(e.toString());
     }
   }
 
-  void _initFirebaseMessaging() async {
-    if (_alreadyCalled) return;
-
-    try {
-      final messaging = FirebaseMessaging.instance;
-      await messaging.requestPermission(alert: true, badge: true, sound: true);
-
-      final token = await messaging.getToken();
-      if (!mounted) return;
-
-      final livreurProvider = context.read<LivreurProvider>();
-      final numeroLivreur = livreurProvider.numeroLivreur;
-      if (numeroLivreur == null) return;
-
-      final deviceInfoPlugin = DeviceInfoPlugin();
-      String deviceName = '';
-
-      if (Platform.isAndroid) {
-        final androidInfo = await deviceInfoPlugin.androidInfo;
-        deviceName = androidInfo.model;
-      } else if (Platform.isIOS) {
-        final iosInfo = await deviceInfoPlugin.iosInfo;
-        deviceName = iosInfo.utsname.machine;
-      }
-
-      final deviceUuid = await getDeviceUuid();
-
-      _alreadyCalled = true;
-      await sendTokenANdAuthentificate(
-        numeroLivreur,
-        token,
-        deviceName,
-        deviceUuid,
-      );
-    } catch (_) {
-      // silencieux en prod (no print)
-    }
-  }
-
-  Future<void> sendTokenANdAuthentificate(
-    String numeroLivreur,
-    String? fcmToken,
-    String deviceName,
-    String deviceId,
-  ) async {
-    await widget.livreurService.sendTokenFCM(
-      numeroLivreur: numeroLivreur,
-      token: fcmToken,
-      device: deviceName,
-      deviceId: deviceId,
-    );
-    await authenticate(numeroLivreur);
-  }
+  // --- ACTIONS DE NAVIGATION ET UTILS ---
 
   void _showSnack(String message) {
     if (!mounted) return;
@@ -124,17 +89,154 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildContactSection(ContactProvider contact, BuildContext context) {
-    if (contact.loading && !contact.loaded) {
-      return Center(child: CircularProgressIndicator());
+  Future<void> _launchExternal(String url, String errorMsg) async {
+    final uri = Uri.parse(url);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      _showSnack(errorMsg);
     }
-    if (!contact.loaded) return SizedBox.shrink();
+  }
+
+  // --- WIDGETS COMPOSANTS ---
+
+  Widget _buildMenuButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    Color? iconColor,
+    bool isPrimary = false,
+  }) {
+    final Color mainColor = isPrimary ? Colors.green : AppColors.primaryBlue;
+    final style = isPrimary
+        ? ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            minimumSize: const Size.fromHeight(50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          )
+        : OutlinedButton.styleFrom(
+            side: BorderSide(color: AppColors.primaryBlue, width: 2),
+            minimumSize: const Size.fromHeight(50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          );
+
+    final content = [
+      Icon(icon, color: isPrimary ? Colors.white : (iconColor ?? mainColor)),
+      const SizedBox(width: 8),
+      Text(
+        label,
+        style: TextStyle(
+          fontSize: 16,
+          color: isPrimary ? Colors.white : mainColor,
+        ),
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: isPrimary
+          ? ElevatedButton(
+              onPressed: onPressed,
+              style: style,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: content,
+              ),
+            )
+          : OutlinedButton(
+              onPressed: onPressed,
+              style: style,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: content,
+              ),
+            ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final livreur = context.watch<LivreurProvider>();
+    final contact = context.watch<ContactProvider>();
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: CustomAppBar(
+        title: 'Mon Espace',
+        numeroLivreur: livreur.numeroLivreur ?? '',
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    _buildMenuButton(
+                      icon: Icons.play_circle_fill,
+                      label: "Démarrer le service",
+                      isPrimary: true,
+                      onPressed: _handleStartService,
+                    ),
+                    _buildMenuButton(
+                      icon: Icons.notifications_active,
+                      label: "Demandes en cours",
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/livraisons'),
+                    ),
+                    _buildMenuButton(
+                      icon: Icons.local_shipping,
+                      iconColor: Colors.red,
+                      label: "Acceptées/Suivies",
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/livraisonsAcceptees'),
+                    ),
+                    _buildMenuButton(
+                      icon: Icons.task_alt,
+                      label: "Livraisons effectuées",
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/livraisonsEffectuees'),
+                    ),
+                    _buildMenuButton(
+                      icon: Icons.leaderboard,
+                      label: "Mes chiffres",
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/dashboard-livreur'),
+                    ),
+                    _buildMenuButton(
+                      icon: Icons.explore_outlined,
+                      label: "Voir sur la carte",
+                      onPressed: () => Navigator.pushNamed(context, '/map'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: _buildContactSection(contact),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContactSection(ContactProvider contact) {
+    if (contact.loading && !contact.loaded)
+      return const Center(child: CircularProgressIndicator());
+    if (!contact.loaded) return const SizedBox.shrink();
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
             color: Colors.black12,
             blurRadius: 12,
@@ -155,79 +257,32 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Icon(Icons.phone, color: Colors.green, size: 20),
-              const SizedBox(width: 6),
-              Text(contact.telephone1 ?? ''),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Icon(Icons.phone_android, color: Colors.green, size: 20),
-              const SizedBox(width: 6),
-              Text(contact.telephone2 ?? ''),
-            ],
-          ),
+          _contactRow(Icons.phone, contact.telephone1 ?? ''),
+          _contactRow(Icons.phone_android, contact.telephone2 ?? ''),
           const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
-                child: ElevatedButton.icon(
-                  icon: Icon(Icons.call, color: Colors.white),
-                  label: Text(
-                    "Appeler",
-                    style: TextStyle(
-                      color: Colors.white, // 👈 écriture blanche
-                      fontSize: 14,
-                      //fontWeight: FontWeight.bold,
-                    ),
+                child: _actionBtn(
+                  "Appeler",
+                  Icons.call,
+                  Colors.green,
+                  () => _launchExternal(
+                    'tel:${contact.telephone2}',
+                    "Impossible d'appeler",
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  onPressed: () {
-                    final numero = contact.telephone2;
-                    if (numero != null && numero.isNotEmpty) {
-                      _callPhone(context, numero);
-                    } else {
-                      _showSnack("Numéro de téléphone indisponible");
-                    }
-                  },
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: ElevatedButton.icon(
-                  icon: FaIcon(FontAwesomeIcons.whatsapp, color: Colors.white),
-                  label: Text(
-                    "WhatsApp",
-                    style: TextStyle(
-                      color: Colors.white, // 👈 écriture blanche
-                      fontSize: 14,
-                      //fontWeight: FontWeight.bold,
-                    ),
+                child: _actionBtn(
+                  "WhatsApp",
+                  FontAwesomeIcons.whatsapp,
+                  Colors.teal,
+                  () => _launchExternal(
+                    "https://wa.me/221${contact.telephone1?.replaceAll(RegExp(r'\D'), '')}",
+                    "WhatsApp non disponible",
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal,
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  onPressed: () {
-                    final numero = contact.telephone1;
-                    if (numero != null && numero.isNotEmpty) {
-                      _openWhatsApp('221$numero');
-                    } else {
-                      _showSnack("Numéro WhatsApp indisponible");
-                    }
-                  },
                 ),
               ),
             ],
@@ -237,250 +292,32 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Future<void> _callPhone(BuildContext context, String? phone) async {
-    if (phone == null || phone.trim().isEmpty) {
-      _showSnack("Numéro de téléphone indisponible");
-      return;
-    }
+  Widget _contactRow(IconData icon, String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(
+      children: [
+        Icon(icon, color: Colors.green, size: 20),
+        const SizedBox(width: 6),
+        Text(text),
+      ],
+    ),
+  );
 
-    final uri = Uri.parse('tel:${phone.trim()}');
-
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      _showSnack("Impossible d'appeler ce numéro");
-    }
-  }
-
-  Future<void> _openWhatsApp(String numero) async {
-    final clean = numero.replaceAll(RegExp(r'\D'), '');
-    if (clean.isEmpty) {
-      _showSnack("Numéro WhatsApp indisponible");
-      return;
-    }
-
-    final uri = Uri.parse("https://wa.me/$clean");
-
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      _showSnack("WhatsApp non disponible");
-    }
-  }
-
-  void _openMapPage() {
-    Navigator.pushNamed(context, '/map');
-  }
-
-  void _openTableauBord() {
-    Navigator.pushNamed(context, '/dashboard-livreur');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final livreurProvider = Provider.of<LivreurProvider>(context);
-    final contact = context.watch<ContactProvider>();
-    final numeroLivreur = livreurProvider.numeroLivreur;
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: CustomAppBar(
-        title: 'Mon Espace',
-        numeroLivreur: numeroLivreur ?? '',
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(
-                          Icons.play_circle_fill,
-                          color: Colors.white,
-                        ),
-                        label: const Text(
-                          "Démarrer le service",
-                          style: TextStyle(fontSize: 16, color: Colors.white),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          minimumSize: const Size.fromHeight(50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: _startTrackingService,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Demandes en cours
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: Icon(
-                          Icons.notifications_active,
-                          color: AppColors.primaryBlue,
-                        ),
-                        label: Text(
-                          'Demandes en cours',
-                          style: TextStyle(
-                            color: AppColors.primaryBlue,
-                            fontSize: 16,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: AppColors.primaryBlue,
-                            width: 2,
-                          ),
-                          backgroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: () => _safeNavigate('/livraisons'),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Livraisons acceptées
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: Icon(Icons.local_shipping, color: Colors.red),
-                        label: Text(
-                          'Acceptées/Suivies',
-                          style: TextStyle(
-                            color: AppColors.primaryBlue,
-                            fontSize: 16,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: AppColors.primaryBlue,
-                            width: 2,
-                          ),
-                          backgroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: () => Navigator.pushNamed(
-                          context,
-                          '/livraisonsAcceptees',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Livraisons effectuées
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: Icon(
-                          Icons.task_alt,
-                          color: AppColors.primaryBlue,
-                        ),
-                        label: Text(
-                          'Livraisons effectuées',
-                          style: TextStyle(
-                            color: AppColors.primaryBlue,
-                            fontSize: 16,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: AppColors.primaryBlue,
-                            width: 2,
-                          ),
-                          backgroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: () => Navigator.pushNamed(
-                          context,
-                          '/livraisonsEffectuees',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: Icon(
-                          Icons.leaderboard,
-                          color: AppColors.primaryBlue,
-                        ),
-                        label: Text(
-                          'Mes chiffres',
-                          style: TextStyle(
-                            color: AppColors.primaryBlue,
-                            fontSize: 16,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: AppColors.primaryBlue,
-                            width: 2,
-                          ),
-                          backgroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: _openTableauBord,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: Icon(
-                          Icons.explore_outlined,
-                          color: AppColors.primaryBlue,
-                        ),
-                        label: Text(
-                          'Voir sur la carte',
-                          style: TextStyle(
-                            color: AppColors.primaryBlue,
-                            fontSize: 16,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
-                            color: AppColors.primaryBlue,
-                            width: 2,
-                          ),
-                          backgroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: _openMapPage,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: _buildContactSection(contact, context),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _actionBtn(
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback tap,
+  ) => ElevatedButton.icon(
+    icon: Icon(icon, color: Colors.white, size: 18),
+    label: Text(
+      label,
+      style: const TextStyle(color: Colors.white, fontSize: 14),
+    ),
+    style: ElevatedButton.styleFrom(
+      backgroundColor: color,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ),
+    onPressed: tap,
+  );
 }

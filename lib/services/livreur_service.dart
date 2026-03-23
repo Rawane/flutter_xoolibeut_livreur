@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:xoolibeut_livreur/utils/exception_xoolibeut.dart';
 import '../config/api_config.dart';
 import 'package:xoolibeut_livreur/utils/device_utils.dart';
-import 'livraison_service.dart'; // Pour importer les exceptions communes
 
 class LivreurService {
   final String baseUrl = ApiConfig.baseUrl;

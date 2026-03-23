@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:xoolibeut_livreur/utils/exception_xoolibeut.dart';
 import '../services/livraison_service.dart';
 import '../providers/livreur_provider.dart';
 import '../widgets/custom_app_bar.dart';
@@ -38,6 +39,7 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
   final ScrollController _scrollController = ScrollController();
 
   bool _isLoading = false;
+  bool _isScanningGPS = false; // 🔹 Nouvelle variable pour le feedback GPS
   bool _hasMore = true;
   bool _isSuspendu = false;
 
@@ -63,7 +65,6 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
     });
   }
 
-  /// 🔹 Centralisation de la gestion des erreurs UI (Internet, Timeout, Métier)
   void _handleUIError(dynamic e) {
     if (!mounted) return;
 
@@ -81,7 +82,6 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
       message = "Erreur technique ";
     }
 
-    // Gestion des cas métiers spécifiques contenus dans le message
     if (message.contains("TROP_LOIN")) {
       final distanceLabel = message.split(":").last;
       _showDistanceErrorDialog(distanceLabel);
@@ -91,7 +91,6 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
       );
       _refreshLivraisons();
     } else {
-      // Erreur générale ou réseau
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
@@ -110,7 +109,10 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
   Future<void> _loadMore() async {
     if (_isLoading || _isSuspendu) return;
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _isScanningGPS = true; // 🔹 On active le flag GPS avant l'appel service
+    });
 
     final numeroLivreur = Provider.of<LivreurProvider>(
       context,
@@ -118,11 +120,16 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
     ).numeroLivreur;
 
     if (numeroLivreur == null) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _isScanningGPS = false;
+      });
       return;
     }
 
     try {
+      // 🔹 Ici, widget.fetchLivraisons va déclencher votre service
+      // qui contient le scan GPS de 12 secondes.
       final newLivraisons = await widget.fetchLivraisons(
         numeroLivreur,
         widget.token,
@@ -133,11 +140,13 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
       if (!mounted) return;
 
       setState(() {
+        _isScanningGPS = false; // 🔹 Scan terminé, on reçoit les données
         _livraisons.addAll(newLivraisons);
         _currentPage++;
         if (newLivraisons.length < _pageSize) _hasMore = false;
       });
     } catch (e) {
+      setState(() => _isScanningGPS = false);
       _handleUIError(e);
     } finally {
       if (mounted) {
@@ -174,10 +183,7 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
                 itemBuilder: (context, index) {
                   if (index == _livraisons.length) {
                     return _hasMore
-                        ? const Padding(
-                            padding: EdgeInsets.all(16),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
+                        ? _buildLoadingFooter()
                         : const SizedBox.shrink();
                   }
 
@@ -201,6 +207,30 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
                 },
               ),
             ),
+    );
+  }
+
+  // 🔹 Widget personnalisé pour le footer de chargement
+  Widget _buildLoadingFooter() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(
+            _isScanningGPS
+                ? "Calcul de votre position GPS..."
+                : "Recherche des colis disponibles...",
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.grey,
+              fontSize: 14,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -334,25 +364,18 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
       ).numeroLivreur;
       if (numeroLivreur == null) return;
 
-      final livraisonAcceptee = await widget.livraisonService.accepterLivraison(
+      await widget.livraisonService.accepterLivraison(
         numeroLivreur,
         livraison.numero,
         widget.token,
       );
 
       if (!mounted) return;
-
-      /*setState(() {
-        _livraisons.removeAt(index);
-        _livraisons.insert(0, livraisonAcceptee);
-      });*/
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Livraison acceptée ✔"),
-          backgroundColor: Color(0xFF00353F), // Même bleu que votre bandeau
-          duration: Duration(
-            seconds: 2,
-          ), // Un peu plus court pour être plus dynamique
+          backgroundColor: Color(0xFF00353F),
+          duration: Duration(seconds: 2),
         ),
       );
       Navigator.pushReplacementNamed(context, '/livraisonsAcceptees');
@@ -388,7 +411,6 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
   }
 
   Future<void> _annulerLivraison(LivraisonLivreur livraison, int index) async {
-    // 1. Afficher le dialogue de confirmation
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
@@ -399,17 +421,14 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false), // Retourne false
+            onPressed: () => Navigator.pop(context, false),
             child: const Text("RETOUR", style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, true), // Retourne true
+            onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red[700],
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
             ),
             child: const Text("OUI, ANNULER"),
           ),
@@ -417,10 +436,8 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
       ),
     );
 
-    // 2. Si l'utilisateur a annulé le dialogue ou cliqué sur RETOUR, on arrête là
     if (confirm != true) return;
 
-    // 3. Procéder à l'annulation technique
     try {
       final numeroLivreur = Provider.of<LivreurProvider>(
         context,
@@ -436,11 +453,10 @@ class _LivraisonListGenericPageState extends State<LivraisonListGenericPage> {
 
       if (!mounted) return;
       setState(() => _livraisons.removeAt(index));
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Livraison annulée ✔"),
-          backgroundColor: Colors.orange, // Couleur d'avertissement
+          backgroundColor: Colors.orange,
         ),
       );
     } catch (e) {

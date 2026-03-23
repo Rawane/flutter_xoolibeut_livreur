@@ -2,32 +2,11 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:xoolibeut_livreur/utils/exception_xoolibeut.dart';
 import '../models/livraison.dart';
 import '../config/api_config.dart';
 import 'package:xoolibeut_livreur/utils/device_utils.dart';
 import 'package:geolocator/geolocator.dart';
-
-/// ❌ Exception : Pas d'internet
-class NoInternetException implements Exception {
-  @override
-  String toString() => "Pas de connexion internet. Vérifiez votre réseau.";
-}
-
-/// ❌ Exception : Serveur trop long à répondre
-class RequestTimeoutException implements Exception {
-  @override
-  String toString() => "Le serveur met trop de temps à répondre. Réessayez.";
-}
-
-/// ❌ Exception : Livreur suspendu
-class LivreurSuspenduException implements Exception {
-  final String message;
-  LivreurSuspenduException([
-    this.message = "Votre compte est suspendu temporairement.",
-  ]);
-  @override
-  String toString() => message;
-}
 
 class LivraisonService {
   final String baseUrl = ApiConfig.baseUrl;
@@ -38,15 +17,31 @@ class LivraisonService {
   /// 🔹 Méthode privée pour centraliser la capture GPS
   Future<Position?> _getCurrentLocation() async {
     try {
+      // 1. On vérifie si le service GPS est activé
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return null;
+
+      // 2. On augmente le temps à 12 secondes pour être réaliste
       return await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 4),
+          accuracy: LocationAccuracy.medium, // Medium est parfait pour la ville
+          timeLimit: Duration(seconds: 12), // <--- On passe à 12s
         ),
+      ).timeout(
+        const Duration(seconds: 13),
+        onTimeout: () {
+          throw 'Timeout atteint'; // Sécurité supplémentaire
+        },
       );
     } catch (e) {
-      print("Erreur capture GPS : $e");
-      return null;
+      //debugPrint("Erreur capture GPS (souvent Timeout) : $e");
+      // Astuce : Tenter de récupérer la dernière position connue si le scan actuel échoue
+      // C'est mieux que 0,0 !
+      try {
+        return await Geolocator.getLastKnownPosition();
+      } catch (_) {
+        return null;
+      }
     }
   }
 
@@ -70,9 +65,15 @@ class LivraisonService {
     int size = 5,
   }) async {
     return _handleRequest(() async {
+      // 1. On tente d'obtenir la position (avec notre timeout de 12s et secours LastKnown)
       Position? position = await _getCurrentLocation();
+
+      // 2. On prépare les coordonnées (si null, on garde 0,0 mais c'est rare avec le secours)
+      final double lat = position?.latitude ?? 0;
+      final double lon = position?.longitude ?? 0;
+
       final uri = Uri.parse(
-        '$baseUrl/demandes/$numeroLivreur?page=$page&size=$size&lat=${position?.latitude ?? 0}&lon=${position?.longitude ?? 0}',
+        '$baseUrl/demandes/$numeroLivreur?page=$page&size=$size&lat=$lat&lon=$lon',
       );
 
       final response = await http

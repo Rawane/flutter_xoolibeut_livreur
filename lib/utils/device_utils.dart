@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:xoolibeut_livreur/config/api_config.dart';
 import 'package:flutter/material.dart';
-import 'package:xoolibeut_livreur/services/livraison_service.dart';
+import 'package:xoolibeut_livreur/utils/exception_xoolibeut.dart';
 
 final _secureStorage = FlutterSecureStorage();
 final _uuid = Uuid();
